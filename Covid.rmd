@@ -1,0 +1,131 @@
+---
+title: "Covid Data"
+date: "2024-10-10"
+output: pdf_document
+---
+
+
+NOTE: This code uses the lmtest library. 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(ggplot2)
+library(lmtest)
+```
+
+# Question of Interest
+
+Is there any difference in the proportion of deaths per cases (approx death rate) between large counties (>100000 people), medium counties (between 100000 and 10000 people) and small counties (> 10000 people)?
+
+# Data
+
+```{r, message=FALSE}
+#Read in the data and combine datasets
+US_cases = read_csv("https://raw.githubusercontent.com/CSSEGISandData/COVID-19/refs/heads/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_US.csv")
+US_deaths = read_csv("https://raw.githubusercontent.com/CSSEGISandData/COVID-19/refs/heads/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_US.csv")
+US_cases = subset(US_cases, select = -c(iso2, iso3, code3, FIPS, Country_Region,Lat,Long_,Combined_Key))
+US_deaths = subset(US_deaths, select = -c(iso2, iso3, code3, FIPS, Country_Region,Lat,Long_,Combined_Key))
+US_total = merge(US_deaths,US_cases,by=c("UID","Admin2","Province_State"), suffixes=c("_deaths", "_cases"))
+head(US_total)[0:10]
+```
+
+The data here is the combined time series for each county in the US and some external regions. Important for my analysis I will be looking at the population of each, and splitting them into datasets based on if the population is large (> 100000), medium . I will also sum the cases and deaths for each of these categories to create a time series with just 2 comparing variables, large and small regions. Lastly, I will divide deaths by cases to get an approximate death rate for the different category of region. The code below calculates these rates and stores them in new lists.
+
+```{r}
+#Find the subsets and the column sums
+US_large = US_total[which(US_total$Population > 100000), ]
+US_large = subset(US_large, select = -c(UID, Admin2, Province_State, Population))
+US_large = colSums(US_large)
+US_medium = US_total[which(US_total$Population > 10000 & US_total$Population < 100000), ]
+US_medium = subset(US_medium, select = -c(UID, Admin2, Province_State, Population))
+US_medium = colSums(US_medium)
+US_small = US_total[which(US_total$Population < 10000), ]
+US_small = subset(US_small, select = -c(UID, Admin2, Province_State, Population))
+US_small = colSums(US_small)
+
+#Calculate the death rate lists
+middle = length(US_large) / 2
+days_since_start = seq(0,1142)
+large_rate = vector(mode='list', length=1143)
+medium_rate = vector(mode='list', length=1143)
+small_rate = vector(mode='list', length=1143)
+for (i in 1: middle) {
+  if (US_large[i+middle] == 0) {
+    large_rate[i] = 0
+  } else {
+    large_rate[i] = US_large[i] / US_large[i+middle]
+  }
+  if (US_medium[i+middle] == 0) {
+    medium_rate[i] = 0
+  } else {
+    medium_rate[i] = US_medium[i] / US_medium[i+middle]
+  }
+  if (US_small[i+middle] == 0) {
+    small_rate[i] = 0
+  } else {
+    small_rate[i] = US_small[i] / US_small[i+middle]
+  }
+}
+```
+
+\newpage
+# Visualizations
+
+For my first visualization I looked at the population of each region. Since population measures are so skewed I looked at the log base 10 of population to get a better idea of the spread. I colored this histogram with what category each of the values would fall into with green being the small, yellow being the medium, and red being the large counties. From this graph it is clear that there may be some bias with the fact that most of the counties fall into the middle range, with fewer in the large and small ranges. 
+
+```{r}
+hist(log10(US_total$Population), breaks=10, col = c('green','green','green','green', 'green','yellow', 'yellow', 'red', 'red', 'red', 'red'))
+```
+
+\newpage
+For my second visualization I plotted each of these time series on the same plot to see how the differ. There is a lot of variability at the start, especially ith large and small counties, mostly due to the small number of total cases and deaths. Because of this variability, I decided to limit the y axis and produce another plot that shows the smaller changes. 
+
+```{r}
+data = do.call(rbind, Map(data.frame, days=days_since_start, large_rate=large_rate))
+data2 = do.call(rbind, Map(data.frame, medium_rate=medium_rate, small_rate=small_rate))
+data = cbind(data,data2)
+ggplot(data, aes(x=days)) +
+  geom_point(aes(y=large_rate), col='red') +
+  geom_point(aes(y=medium_rate), col='yellow') +
+  geom_point(aes(y=small_rate), col='green')
+```
+
+\newpage
+The plot below is the same plot but I limited the y axis to 0.1 to exclude those extremely high values.From this plot it can be seen that the large counties had their highest death rates early, most likely due to overcrowding of hospitals, while small counties had their highest death rates after about 300 days, most likely due to those people having less easy access to medicl care. Overall we can see there is a lot of variance between the rates early, but they tend to settle down after the 700 day mark. 
+
+```{r, warning = FALSE}
+data = do.call(rbind, Map(data.frame, days=days_since_start, large_rate=large_rate))
+data2 = do.call(rbind, Map(data.frame, medium_rate=medium_rate, small_rate=small_rate))
+data = cbind(data,data2)
+ggplot(data, aes(x=days)) +
+  geom_point(aes(y=large_rate), col='red') +
+  geom_point(aes(y=medium_rate), col='yellow') +
+  geom_point(aes(y=small_rate), col='green') + 
+  ylim(0,0.1)
+```
+
+\newpage
+# Analysis
+
+For my analysis I ran 3 Granger tests for comparing time series data, first I compared large and small counties, which had a p-value of $5.6*10^{-6}$. Comparing medium and large counties next gave  p-value of $8.3*10^{-5}$. Lastly, comparing small and medium counties gave a p-value of $1.2*10^{-7}$. 
+
+
+```{r}
+test1 = grangertest(data$large_rate ~ data$small_rate)
+test1
+```
+
+```{r}
+test2 = grangertest(data$large_rate ~ data$medium_rate)
+test2
+```
+
+```{r}
+test3 = grangertest(data$medium_rate ~ data$small_rate)
+test3
+```
+
+# Conclusion
+
+Since all three of the p-values were significant, we have evidence to suggest that there is a significant difference between the three categories of region and their Covid death rate patterns. It appears that larger counties had higher death rates at the beginning, probably due to the large population quickly filling up hospitals. Smaller counties had higher death rates overall, probably because they had a harder time accessing proper medical resources. Lastly, medium sized counties were somewhat stable, probably due to them having the right balance of high medical resources and small enough populations to not overload those resources. 
