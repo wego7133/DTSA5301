@@ -1,0 +1,76 @@
+---
+title: "NYPD_Shootings"
+date: "2024-10-03"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(ggplot2)
+```
+
+
+```{r, message=FALSE}
+shootings = read_csv("https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD")
+```
+
+# Data Summary
+
+Below is my summary for the cleaned data for the NYPD shootings, including only the data I am going to use (time, borough, precinct, location, and if the incident was a murder). There were 59 NA's in the location data, but I removed those since it was such a small number, it is unlikely to have an effect on the overall patterns. 
+```{r}
+shootings = shootings[c("INCIDENT_KEY", "OCCUR_TIME", "BORO", "PRECINCT", "Latitude", "Longitude", "STATISTICAL_MURDER_FLAG")]
+
+shootings$OCCUR_TIME = as.integer(substr(shootings$OCCUR_TIME, start = 1, stop = 2)) #Set occur time to first 2 digits of time
+names(shootings)[names(shootings) == 'OCCUR_TIME'] <- 'OCCUR_HOUR' #Change name to hour
+shootings = shootings[complete.cases(shootings), ] #Remove NA values
+summary(shootings)
+```
+
+\newpage
+# Visualizations
+
+The visualization below shows the proportion of total shootings that are classified as murders. The murders are shown in blue while the non-murders are red. The highest proportion seems to be around 7 am, with just over 1/4 of all shootings being murders. This appears to have a quadratic sort of fit, with it raising in the middle and decreasing in the later evening hours. 
+
+```{r}
+ggplot(shootings,aes(x = OCCUR_HOUR,fill = STATISTICAL_MURDER_FLAG)) + 
+    geom_bar(position = "fill") +
+    ggtitle("Proportion of Shootings that are Murders per Hour")
+```
+
+The following visualization is a map of all the shootings plotted by their lat-lon location. This shows the layout of New York city with the colors representing which borough is which. This visualization is just to show where each borough is to help with the next visualization. 
+
+```{r}
+ggplot(shootings, aes(x=Longitude, y=Latitude, colour=BORO)) +
+  geom_point(size=1)
+```
+
+In the following image, we can see all shootings on the map of New York colored by weather they are a murder or not, there does not seem to be any pattern nd the borough differences do not seem to make much of a difference. 
+
+```{r}
+ggplot(shootings, aes(x=Longitude, y=Latitude, colour=STATISTICAL_MURDER_FLAG)) +
+  geom_point(size=1)
+```
+
+
+
+
+\newpage
+# Analysis
+
+For the first analysis I looked at how a quadratic fit on hour of shooting occurrence fit the proportion of murders. I found that there was a high significance for this relationship, but the R^2 value of 0.001111 implied that this model has fairly low predictive power. 
+
+```{r}
+model = lm(STATISTICAL_MURDER_FLAG ~ OCCUR_HOUR + I(OCCUR_HOUR^2), data = shootings)
+summary(model)
+```
+For my second analysis I looked at how the proportion of shootings being murders can be predicted by which borough the shooting as committed in. From our estimates we can see that the estimated proportion for the Bronx (default) was 0.195. Brooklyn, Queens, and Staten Island did not have significant differences between themselves and the Bronx, but Manhattan had an verage proportion that was statistically different at 0.18 of the total shootings being murders. 
+
+```{r}
+model = lm(STATISTICAL_MURDER_FLAG ~ BORO, data = shootings)
+summary(model)
+```
+
+# Conclusion
+
+From the NYPD dataset there does seem to be evidence that the number of shootings that are murders does change throughout the day, but there is very little evidence that the borough the shooting took place affects weather or not it is a murder. This analysis may have some errors, as there may have been bias both in the data recorded by the NYPD and in the way I presented it. The NYPD dataset may have some errors with how their location data is recorded, such as how there are a few shootings recorded as Manhattan that appear to be in the middle of the Bronx. The way I cleaned the data may have introduced some bias. I simply took the first 2 digits of the time code when the shooting was recorded and used that as the hour value, this may introduce some sort of pattern, where rounding, or even storing the minutes/seconds as a decimal may have been more accurate. Lastly, there is the potential for personal bias in the fact that I chose to present this data, nd it may have been personal experiences that led me to look at these specific relationships. 
