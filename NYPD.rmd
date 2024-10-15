@@ -58,12 +58,22 @@ ggplot(shootings, aes(x=Longitude, y=Latitude, colour=STATISTICAL_MURDER_FLAG)) 
 \newpage
 # Analysis
 
-For the first analysis I looked at how a quadratic fit on hour of shooting occurrence fit the proportion of murders. I found that there was a high significance for this relationship, but the R^2 value of 0.001111 implied that this model has fairly low predictive power. 
+For the first analysis I looked at how a sinusoidal relationship here, to match up with the cyclical pattern of days. The sine and cosine terms are both significant, but the model has a very low adjusted R^2 so it has little predictive power. The following plot shpws the models fit, with the max marked in red and the min marked in blue. 
 
 ```{r}
-model = lm(STATISTICAL_MURDER_FLAG ~ OCCUR_HOUR + I(OCCUR_HOUR^2), data = shootings)
+model = lm(STATISTICAL_MURDER_FLAG ~ I(sin(pi*OCCUR_HOUR/12)) + I(cos(pi*OCCUR_HOUR/12)), data = shootings)
 summary(model)
 ```
+
+```{r}
+x = seq(0,23,length.out = 100)
+y = predict(model, data.frame(OCCUR_HOUR = x))
+plot(x,y, ylim = c(0,1), type='l')
+points(x[which.max(y)], max(y), col = 'red')
+points(x[which.min(y)], min(y), col = 'blue')
+```
+
+
 For my second analysis I looked at how the proportion of shootings being murders can be predicted by which borough the shooting as committed in. From our estimates we can see that the estimated proportion for the Bronx (default) was 0.195. Brooklyn, Queens, and Staten Island did not have significant differences between themselves and the Bronx, but Manhattan had an verage proportion that was statistically different at 0.18 of the total shootings being murders. 
 
 ```{r}
